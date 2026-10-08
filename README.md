@@ -36,8 +36,6 @@ npm run build
 
 Die App läuft danach offline. Updates kommen beim nächsten Öffnen mit Internet automatisch.
 
-**Tipp:** Unter Android-Einstellungen → Bedienungshilfen → Text-in-Sprache die **Google-Sprachausgabe** mit deutscher Stimme wählen; die App nutzt diese Stimme für die Ansagen.
-
 ## Aufbau
 
 ```
@@ -45,7 +43,7 @@ src/
   App.tsx              Spielzustand, Ereignisse (Abhaken, Finale, Abfahrt)
   time.ts              Zeitfenster, Phasen (Nacht, Morgen, Los, Frei), Tageswechsel
   settings.ts          Einstellungen, Validierung gespeicherter Daten
-  sound.ts             Web-Audio-Synthesizer, Vogel-Atmo, Sprachausgabe
+  sound.ts             Web-Audio-Synthesizer, Vogel-Atmo, Tierrufe
   constants.ts         Alle Texte, Aufgabenkatalog, Zeiten
   components/          Plättchen, Tier-Hülle, Konfetti, Start-Ritual, Einstellungen
   themes/sunrise/      Alles Theme-spezifische: Szene, Tiere, Icons, Farben, CSS

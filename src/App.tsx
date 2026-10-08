@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { SPEECH, STORAGE_KEYS, TASK_BY_ID, TEXT, TIMING, type TaskId } from './constants'
+import { STORAGE_KEYS, TASK_BY_ID, TEXT, TIMING, type TaskId } from './constants'
 import { DEFAULT_SETTINGS, emptyProgress, normalizeProgress, normalizeSettings, type DayProgress } from './settings'
 import { dayKey, getMorningState, type MorningState } from './time'
 import { useNow, useStoredState } from './hooks'
 import { enterFullscreen, keepScreenOn } from './device'
 import * as sound from './sound'
-import { ANIMALS, Scene, TASK_ICONS } from './themes/sunrise'
+import { ANIMAL_CALLS, ANIMALS, Scene, TASK_ICONS } from './themes/sunrise'
 import { TaskToken } from './components/TaskToken'
 import { Critter } from './components/Critter'
 import { Confetti } from './components/Confetti'
@@ -13,7 +13,6 @@ import { Settings } from './components/Settings'
 import { StartOverlay } from './components/StartOverlay'
 
 const AMBIENCE = { NIGHT: 0.08, DAWN: 0.25, IDLE: 0.45 } as const
-const WAKE_SPEECH_DELAY_MS = 700
 
 const clockFormat = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' })
 
@@ -66,10 +65,7 @@ export function App() {
 
   const previousPhase = useRef(morning.phase)
   useEffect(() => {
-    if (previousPhase.current === 'morning' && morning.phase === 'leave') {
-      sound.playDoorbell()
-      sound.speak(SPEECH.TIME_TO_GO)
-    }
+    if (previousPhase.current === 'morning' && morning.phase === 'leave') sound.playDoorbell()
     previousPhase.current = morning.phase
   }, [morning.phase])
 
@@ -86,18 +82,15 @@ export function App() {
     const done = [...progress.done, id]
     const finishesAll = tasks.every((task) => done.includes(task.id))
     sound.playCheck(progress.done.length)
+    window.setTimeout(ANIMAL_CALLS[id], TIMING.ANIMAL_CALL_DELAY_MS)
 
     if (finishesAll && !progress.celebrated) {
       saveProgress(done, true)
       setIsCelebrating(true)
-      window.setTimeout(() => {
-        sound.playFanfare()
-        sound.speak(SPEECH.ALL_DONE)
-      }, TIMING.FANFARE_DELAY_MS)
+      window.setTimeout(sound.playFanfare, TIMING.FANFARE_DELAY_MS)
       return
     }
     saveProgress(done)
-    window.setTimeout(() => sound.speak(TASK_BY_ID[id].speech), TIMING.SPEECH_DELAY_MS)
   }
 
   const undoTask = (id: TaskId) => {
@@ -110,7 +103,6 @@ export function App() {
     enterFullscreen()
     keepScreenOn()
     sound.playWake()
-    window.setTimeout(() => sound.speak(SPEECH.WAKE_UP), WAKE_SPEECH_DELAY_MS)
   }
 
   return (

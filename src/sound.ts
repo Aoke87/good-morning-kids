@@ -1,9 +1,10 @@
-import { SPEECH } from './constants'
-
 const AUDIO = {
   MASTER_GAIN: 0.8,
   AMBIENCE_GAIN: 0.06,
   ATTACK_S: 0.008,
+  RELEASE_S: 0.04,
+  // Moderate Q keeps several harmonics around the center, which reads as a vowel rather than a whistle.
+  FORMANT_Q: 4,
   MARIMBA_DECAY_S: 0.9,
   BELL_DECAY_S: 2.4,
   // Inharmonic partials are what make a sine stack sound like a bell instead of an organ.
@@ -33,7 +34,6 @@ export function unlockAudio(): void {
 
 export function setSoundEnabled(value: boolean): void {
   enabled = value
-  if (!value) window.speechSynthesis?.cancel()
 }
 
 function audio(): { ctx: AudioContext; out: GainNode } | null {
@@ -51,25 +51,87 @@ interface ToneOptions {
   volume?: number
   glideTo?: number
   pan?: number
+  attack?: number
+  /** Sustain at full volume and fade only at the end, like a voice, instead of decaying like a struck note. */
+  hold?: boolean
+  /** Band-pass center in Hz; turns a buzzy oscillator into an animal-like vowel. */
+  formant?: number
+  /** depth is a fraction of freq. */
+  vibrato?: { rate: number; depth: number }
 }
 
-function tone({ freq, at = 0, duration = AUDIO.MARIMBA_DECAY_S, type = 'sine', volume = 0.25, glideTo, pan = 0 }: ToneOptions): void {
+export function tone({
+  freq,
+  at = 0,
+  duration = AUDIO.MARIMBA_DECAY_S,
+  type = 'sine',
+  volume = 0.25,
+  glideTo,
+  pan = 0,
+  attack = AUDIO.ATTACK_S,
+  hold = false,
+  formant,
+  vibrato,
+}: ToneOptions): void {
   const a = audio()
   if (!a) return
   const start = a.ctx.currentTime + at
+  const end = start + duration
   const osc = a.ctx.createOscillator()
   const gain = a.ctx.createGain()
   const panner = a.ctx.createStereoPanner()
   osc.type = type
   osc.frequency.setValueAtTime(freq, start)
   if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, start + duration * 0.8)
+  if (vibrato) {
+    const lfo = a.ctx.createOscillator()
+    const depth = a.ctx.createGain()
+    lfo.frequency.value = vibrato.rate
+    depth.gain.value = freq * vibrato.depth
+    lfo.connect(depth).connect(osc.frequency)
+    lfo.start(start)
+    lfo.stop(end + 0.05)
+  }
   gain.gain.setValueAtTime(0.0001, start)
-  gain.gain.exponentialRampToValueAtTime(volume, start + AUDIO.ATTACK_S)
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  gain.gain.exponentialRampToValueAtTime(volume, start + attack)
+  if (hold) gain.gain.setValueAtTime(volume, end - AUDIO.RELEASE_S)
+  gain.gain.exponentialRampToValueAtTime(0.0001, end)
   panner.pan.value = pan
-  osc.connect(gain).connect(panner).connect(a.out)
+  const source = formant ? osc.connect(bandpass(a.ctx, formant)) : osc
+  source.connect(gain).connect(panner).connect(a.out)
   osc.start(start)
-  osc.stop(start + duration + 0.05)
+  osc.stop(end + 0.05)
+}
+
+function bandpass(context: AudioContext, freq: number): BiquadFilterNode {
+  const filter = context.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.value = freq
+  filter.Q.value = AUDIO.FORMANT_Q
+  return filter
+}
+
+let noiseBuffer: AudioBuffer | null = null
+
+/** Filtered white noise for breathy sounds (sniffing, rustling) that no oscillator can produce. */
+export function noise({ formant, at = 0, duration = 0.1, volume = 0.3 }: { formant: number; at?: number; duration?: number; volume?: number }): void {
+  const a = audio()
+  if (!a) return
+  if (!noiseBuffer) {
+    noiseBuffer = a.ctx.createBuffer(1, a.ctx.sampleRate, a.ctx.sampleRate)
+    const samples = noiseBuffer.getChannelData(0)
+    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1
+  }
+  const start = a.ctx.currentTime + at
+  const source = a.ctx.createBufferSource()
+  const gain = a.ctx.createGain()
+  source.buffer = noiseBuffer
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(volume, start + duration * 0.3)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  source.connect(bandpass(a.ctx, formant)).connect(gain).connect(a.out)
+  source.start(start)
+  source.stop(start + duration + 0.05)
 }
 
 function marimba(freq: number, at = 0, volume = 0.28): void {
@@ -118,18 +180,6 @@ export function playFanfare(): void {
 export function playDoorbell(): void {
   bell(659.3)
   bell(523.3, 0.55)
-}
-
-export function speak(text: string): void {
-  const synth = window.speechSynthesis
-  if (!enabled || !synth) return
-  synth.cancel()
-  const utterance = new SpeechSynthesisUtterance(text)
-  utterance.lang = SPEECH.LANG
-  utterance.pitch = SPEECH.PITCH
-  utterance.rate = SPEECH.RATE
-  utterance.voice = synth.getVoices().find((voice) => voice.lang.startsWith('de')) ?? null
-  synth.speak(utterance)
 }
 
 /* ---------- Ambience: synthesized birdsong whose density follows the sun ---------- */
